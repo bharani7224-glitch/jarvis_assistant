@@ -1,0 +1,38 @@
+# ---- Core ----
+python-dotenv>=1.0.1
+numpy>=1.26
+psutil>=5.9.8
+
+# ---- Audio in (mic) ----
+sounddevice>=0.4.7
+
+# ---- STT ----
+faster-whisper>=1.0.3
+SpeechRecognition>=3.10.4        # only used if STT_ENGINE=google
+
+# ---- Phase 2: Silero VAD (pulls in torch; set VAD_ENGINE=energy to skip it) ----
+silero-vad>=5.1
+
+# ---- Phase 2: wake word ("Hey Jarvis", fully offline) ----
+openwakeword>=0.6.0
+
+# ---- TTS ----
+edge-tts>=6.1.12
+pygame>=2.5.2
+pyttsx3>=2.90                    # offline fallback (Windows SAPI5)
+
+# ---- Global hotkey ----
+keyboard>=0.13.5
+
+# ---- Phase 2: GUI automation ----
+pyautogui>=0.9.54
+pyperclip>=1.8.2
+pygetwindow>=0.0.9
+
+# ---- LLM providers (install both, pick one via LLM_PROVIDER in .env) ----
+google-genai>=1.0.0
+anthropic>=0.40.0
+
+# ---- Phase 3+ (uncomment when you get there) ----
+# pystray>=0.19.5
+# Pillow>=10.3.0

@@ -1,0 +1,30 @@
+# Environment variables and secrets
+.env
+.env*.local
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python cache & compiled bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# IDEs & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and scratch
+*.log
+mnt/
