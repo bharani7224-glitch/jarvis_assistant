@@ -1,4 +1,4 @@
-"""LLM client with native tool calling (Gemini or Claude) and short-term conversation memory."""
+"""LLM client with native tool calling (Groq, Gemini, or Claude) and short-term conversation memory."""
 import logging
 from typing import Callable
 
@@ -16,6 +16,80 @@ def _trim(history: list, is_user_turn: Callable[[object], bool], limit: int) -> 
         if is_user_turn(history[i]):
             del history[:i]
             return
+
+
+# ====================================================================== Groq
+class _GroqBackend:
+    """Groq Cloud LLM backend with native parallel tool calling.
+
+    Uses a strict HTTP timeout (config.LLM_TIMEOUT) so a stalled request
+    fails fast instead of blocking the voice loop for 60+ seconds.
+    """
+
+    def __init__(self) -> None:
+        from groq import Groq
+
+        self._client = Groq(api_key=config.GROQ_API_KEY, timeout=config.LLM_TIMEOUT)
+        self._tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": s["name"],
+                    "description": s["description"],
+                    "parameters": s["parameters"],
+                },
+            }
+            for s in tools.get_schemas()
+        ]
+        self._history: list[dict] = []
+
+    @staticmethod
+    def _is_user_text(msg: dict) -> bool:
+        return msg.get("role") == "user" and isinstance(msg.get("content"), str)
+
+    def reset(self) -> None:
+        self._history.clear()
+
+    def respond(self, user_text: str) -> str:
+        import json
+
+        self._history.append({"role": "user", "content": user_text})
+        _trim(self._history, self._is_user_text, config.MAX_HISTORY_MESSAGES)
+
+        messages = [{"role": "system", "content": config.SYSTEM_PROMPT}] + self._history
+
+        for _ in range(config.MAX_TOOL_ROUNDS):
+            resp = self._client.chat.completions.create(
+                model=config.GROQ_MODEL,
+                messages=messages,
+                tools=self._tools or None,
+                tool_choice="auto" if self._tools else None,
+                max_tokens=config.LLM_MAX_TOKENS,
+            )
+            msg = resp.choices[0].message
+            messages.append(msg)
+            self._history.append({"role": "assistant", "content": msg.content, "tool_calls": msg.tool_calls})
+
+            if not msg.tool_calls:
+                text = (msg.content or "").strip()
+                return text or "Done."
+
+            # Execute every tool call in this round (Groq supports parallel calls)
+            for call in msg.tool_calls:
+                try:
+                    args = json.loads(call.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                result = tools.execute(call.function.name, args)
+                tool_msg = {
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": str(result),
+                }
+                messages.append(tool_msg)
+                self._history.append(tool_msg)
+
+        return "That took too many steps, so I stopped."
 
 
 # ====================================================================== Gemini
@@ -77,7 +151,10 @@ class _ClaudeBackend:
     def __init__(self) -> None:
         import anthropic
 
-        self._client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        self._client = anthropic.Anthropic(
+            api_key=config.ANTHROPIC_API_KEY,
+            timeout=config.LLM_TIMEOUT,
+        )
         self._tools = [
             {"name": s["name"], "description": s["description"], "input_schema": s["parameters"]}
             for s in tools.get_schemas()
@@ -121,7 +198,12 @@ class _ClaudeBackend:
 # ====================================================================== Public
 class Brain:
     def __init__(self) -> None:
-        self._backend = _ClaudeBackend() if config.LLM_PROVIDER == "claude" else _GeminiBackend()
+        if config.LLM_PROVIDER == "groq":
+            self._backend = _GroqBackend()
+        elif config.LLM_PROVIDER == "claude":
+            self._backend = _ClaudeBackend()
+        else:
+            self._backend = _GeminiBackend()
         log.info("Brain ready: provider=%s, %d tools", config.LLM_PROVIDER, len(tools.get_schemas()))
 
     def reset(self) -> None:
@@ -130,7 +212,7 @@ class Brain:
     def respond(self, user_text: str) -> str:
         try:
             return self._backend.respond(user_text)
-        except Exception as exc:  # network, quota, auth...
+        except Exception as exc:  # network, quota, auth, timeout…
             log.exception("LLM call failed")
             name = type(exc).__name__
             return f"Sorry, I couldn't reach the AI service. {name}."

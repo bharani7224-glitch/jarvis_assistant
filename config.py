@@ -55,7 +55,7 @@ MAX_RECORD_SECONDS = _env_float("MAX_RECORD_SECONDS", 20.0)
 MIN_SPEECH_SECONDS = 0.35
 PREROLL_BLOCKS = 10                                       # audio kept from before speech is detected
 
-VAD_ENGINE = _env("VAD_ENGINE", "silero")                 # silero | energy (fallback, no torch needed)
+VAD_ENGINE = _env("VAD_ENGINE", "energy")                 # energy | silero (silero needs torch/silero-vad installed)
 SILERO_THRESHOLD = _env_float("SILERO_THRESHOLD", 0.5)    # speech probability cutoff
 SILERO_USE_ONNX = _env_bool("SILERO_USE_ONNX", True)
 SILERO_BLOCK = 512                                        # samples per VAD frame at 16 kHz (fixed by model)
@@ -67,7 +67,7 @@ MAX_RMS_THRESHOLD = _env_float("MAX_RMS_THRESHOLD", 1500.0)
 NOISE_MULTIPLIER = _env_float("NOISE_MULTIPLIER", 3.0)
 
 # ---------------------------------------------------------------- STT
-STT_ENGINE = _env("STT_ENGINE", "whisper")                # whisper | google
+STT_ENGINE = _env("STT_ENGINE", "google")                # google | whisper (whisper needs faster-whisper installed)
 WHISPER_MODEL = _env("WHISPER_MODEL", "small")            # base | small | medium
 WHISPER_DEVICE = _env("WHISPER_DEVICE", "cpu")            # cpu | cuda
 WHISPER_COMPUTE_TYPE = _env("WHISPER_COMPUTE_TYPE", "int8")
@@ -80,11 +80,14 @@ WHISPER_PROMPT = (
 GOOGLE_STT_LANGUAGE = _env("GOOGLE_STT_LANGUAGE", "en-IN")
 
 # ---------------------------------------------------------------- LLM
-LLM_PROVIDER = _env("LLM_PROVIDER", "gemini").lower()     # gemini | claude
+LLM_PROVIDER = _env("LLM_PROVIDER", "groq").lower()       # groq | gemini | claude
 GEMINI_API_KEY = _env("GEMINI_API_KEY", "")
 GEMINI_MODEL = _env("GEMINI_MODEL", "gemini-3.8-flash")
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-haiku-5-5")
+GROQ_API_KEY = _env("GROQ_API_KEY", "")
+GROQ_MODEL = _env("GROQ_MODEL", "llama-3.3-70b-versatile")
+LLM_TIMEOUT = _env_int("LLM_TIMEOUT", 10)                # strict HTTP timeout in seconds (no long retries)
 LLM_MAX_TOKENS = _env_int("LLM_MAX_TOKENS", 400)
 MAX_TOOL_ROUNDS = 8
 MAX_HISTORY_MESSAGES = 24
@@ -121,8 +124,10 @@ CONFIRM_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "
 def validate() -> list[str]:
     """Return a list of human-readable config problems (empty = OK)."""
     problems = []
-    if LLM_PROVIDER not in ("gemini", "claude"):
-        problems.append(f"LLM_PROVIDER must be 'gemini' or 'claude' (got '{LLM_PROVIDER}').")
+    if LLM_PROVIDER not in ("groq", "gemini", "claude"):
+        problems.append(f"LLM_PROVIDER must be 'groq', 'gemini', or 'claude' (got '{LLM_PROVIDER}').")
+    if LLM_PROVIDER == "groq" and not GROQ_API_KEY:
+        problems.append("GROQ_API_KEY is missing in .env.")
     if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
         problems.append("GEMINI_API_KEY is missing in .env.")
     if LLM_PROVIDER == "claude" and not ANTHROPIC_API_KEY:
